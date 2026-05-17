@@ -3,6 +3,8 @@ use landlock::{
 };
 use clap::{Parser, Subcommand};
 use std::process::Command;
+use std::io;
+use std::io::Write;
 
 
 /// lnx-runner
@@ -38,17 +40,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .handle_access(protected_actions)?
         .create()?;
 
+        // Define the rules which the landlock process has access to
         let path_fd = PathFd::new(&path)?;
         ruleset = ruleset.add_rule(PathBeneath::new(path_fd, permissions))?;
 
+        print!("Please specify the dictionaries where this script has access to:");
+
+        // Flush stdout to make sure prompt actually prints before before waiting for input
+        io::stdout().flush().unwrap();
+
+        // Create a new, empty string
+        let mut input = String::new();
+
+        // Read user string
+        io::stdin()
+            .read_line(&mut input)
+            .expect("Failed to read line");
+
+        // Create a new vector permission array, seperated by a single whitespace
+        let permissions_list: Vec::<String> = input
+            .split_whitespace()
+            .map(|s| s.trim().to_string())
+            .collect();
+
         // Add the system paths
         // TODO: Don't forget to clean this spaghetti up once you get it working properly
-        let permitted_paths = ["/usr", "/lib", "/lib64", "/etc", "/dev/null", "/dev/tty", "."];
-        for p in permitted_paths {
+        for p in &permissions_list {
             if let Ok(p_fd) = PathFd::new(p) {
                 ruleset = ruleset.add_rule(PathBeneath::new(p_fd, permissions))?;
             }
         }
+
+        println!("The script has access to...: {:?}", permissions_list);
 
         // Now restrict processes using the ruleset, remember that starting from this point you are bound by these rules as well
         ruleset.restrict_self()?;
